@@ -1,191 +1,294 @@
-using QuantEcon, Plots, Pkg, Dierckx, NLsolve, LinearAlgebra
+using Dierckx
+using Distributions
+using LinearAlgebra
+using NLsolve
+using Pkg
+using Plots
+using QuantEcon
+
+# ----------------------------------------------------------------------------- #
 
 # set current folder as the working directory
 cd(@__DIR__)
 
+# ============================================================================= #
 
-# Specify the AR(1) paramaters on the basis of answer to previous questions
-φ = 0.7
-σ = 10
- #3.114 is the mean inflation
-Ey = 100
-μ_w = Ey*(1-φ)
-# Discretize the AR(1) using Tauchen method
-function Aprrox_MC(N, φ, σ, μ,bounds)
-    Π = QuantEcon.tauchen(N, φ, σ, 0,bounds)
-    # States of the markov Chain
-    s = Π.state_values .+ μ
-    Π = Π.p
-    # Simulate Markov Chain
-    return s, Π
-end
+# Step 1: Replicate Figure 1 of Deaton (1991)
 
-# Obtain particular discretization for the problem
-nS = 10
-(s, Π) = Aprrox_MC(nS, φ, σ, Ey,3)
+# Figure 1 of Deaton (1991) is a plot of the consumption function for a 
+# range of utility functions and income dispersions. 
 
-# Risk aversion from Deaton
-ρ = 2
-β = 0.95
-R = 1.05
+# ----------------------------------------------------------------------------- #
 
-# Define CRRA utility function
+# Define the CRRA utility function 
+
+"""
+    u(c, γ)
+
+The CRRA utility function.
+"""
 function u(c, γ)
-    if γ == 1
+    if c < 0.01 
+        return -100000
+    elseif γ == 1
         return log(c)
     else
-        return (c^(1-γ) - 1)/(1-γ)
+        return c^(1 - γ) / (1 - γ)
     end
 end
 
-# Define the derivative of the utility function
-function u′(c, γ)
-    if γ == 1
-        return 1/c
-    else
-        return c^(-γ)
-    end
-end
+# ----------------------------------------------------------------------------- #
+
+# Define the grids we will use. 
+
+### Define the grid sizes 
+
+nx = 200 # number of grid points for cash-on-hand x
+ns = 200 # number of grid points for saving s
+
+## Define the grids. 
+## Note that the saving grid implicitly contains the borrowing constraint. 
+x_grid = range(10, 320, length = nx) # Grid for cash on hand
+s_grid = range(0.0, 300, length = ns) # Grid for saving. 
 
 
-# Define grids for cash-on-hand and bond holdings
-nW = 1000
-nB = 1000
-w_grid = range(0.01,300,nW) # Grid on cash on hand
-# note that the lower bound on w_grid can be obtained from the fact that w = b + y
-b_grid = range(0.01,300,nB) # Grid on borrowing
 
-# Initialize policy function
-b′ = zeros(nW, nS)
-w′ = zeros(nW, nS)
-c = zeros(nW, nS)
+# ----------------------------------------------------------------------------- #
 
-# Initialize value function
-V = zeros(nW,nS)
-# Reasonable guess: for every element of the grid, the value function is the utility of the grid element
-for (i_w, w) in enumerate(w_grid)
-    for j in 1:nS
-        V[i_w,j] = u(w, ρ)
-    end
-end
-# Initialize policy function
-b′_sol = zeros(nW,nS)
-w′_sol = zeros(nW,nS)
-c_sol = zeros(nW,nS)
+# Define function to solve the infinite-horizon consumption savings problem with 
+# a borrowing constraint. 
 
-# Define Bellman operator
-function T!(V)
-    VV_new = copy(V)
-    VV_cands = zeros(nB)
-    # Define an array of splines of V
-    V_splines = [Spline1D(w_grid, V[:,i]; k = 3) for i in 1:nS]
-    for (w_index, w)  in enumerate(w_grid)
-        for (y_index, y) in enumerate(s)
-            for (b′_index, b′) in enumerate(b_grid) # Borrowing constraint is imposed from the grid.
-                if w <= b′/R
-                    VV_cands[b′_index] = -1e30
-                else
-                    rhs_bellman = u(w - b′/R, ρ) + β*sum(V_splines[y′_index](b′ + y′)*Π[y_index,y′_index] for (y′_index, y′) in enumerate(s))
-                    # for (y′_index, y′) in enumerate(s)
-                        # w′ = b′ + y′
-                        # w′_index = findfirst(x -> x >= w′, w_grid) # Find the index of the first element of w that is greater than wp
-                        # Marcelo used findmin
-                        # wp_pos = findmin(abs.(w - wp))[2] # Find the index of the element of w that is closest to wp
-                    #    rhs_bellman += β*V_splines[y′_index](w′)*Π[y_index,y′_index]
-                    # end
-                    VV_cands[b′_index] = rhs_bellman
+"""
+    solve_csp(ρ, σ, μ, R, δ, b)
+
+Solve the infinite-horizon consumption savings problem with a borrowing constraint
+for a given value of relative risk aversion ρ, income dispersion σ, mean income μ,
+interest rate R, discount rate δ, and borrowing constraint b.
+
+Returns the consumption function, the value function, and the policy function. 
+"""
+
+function solve_csp(ρ, σ, μ, R, δ, x_grid, s_grid)
+
+    # ρ is the coefficient of relative risk aversion
+    # σ is the standard deviation of the income process
+    # μ is the mean of the income process
+    # R is the interest rate
+    # δ is the discount rate
+
+    # ----------------------------------------------------------------------------- #
+
+    # Step (2): Form a discrete grid for the income process.
+    ## Income is independent and identically distributed N(μ, σ^2). 
+
+    ## Set n, which is the number of potential realizations of y 
+    n = 100
+
+    ## Set the bounds of the grid
+    y_min = μ - 3 * σ
+    y_max = μ + 3 * σ
+
+    ## Form the grid
+
+    y_grid = range(y_min, y_max, length = n)
+
+    ## Form a probability grid 
+
+    p_grid = [1/n for i in 1:n]
+
+    ## Construct a grid of midpoints 
+
+    y_midpoints = (y_grid[1:end-1] + y_grid[2:end]) / 2
+
+    ## For each y in y_midpoints, compute the probability of observing discrete approximation y,
+    ## which we take to be the value of the CDF at the midpoint minus the cdf at the prior midpoint, 
+    ## filling in the boundaries. 
+
+    p_grid[1] = cdf(Normal(μ, σ), y_midpoints[1])
+    p_grid[2:end-1] = cdf(Normal(μ, σ), y_midpoints[2:end]) - cdf(Normal(μ, σ), y_midpoints[1:end-1])
+    p_grid[end] = 1 - cdf(Normal(μ, σ), y_midpoints[end-1])
+
+    # ----------------------------------------------------------------------------- #
+
+    # Step (3): Guess a value function given wealth. We guess the value function is 0. 
+
+    V_old = zeros(ns)
+
+    ## Initialize the new value function and optimal savings function
+    V_new = zeros(ns)
+    s_opt = zeros(ns)
+    c_opt = zeros(ns)
+
+    # ----------------------------------------------------------------------------- #
+
+    # Step (4): Update the value function, recursively, until within tolerance. 
+
+    ## Set the tolerance level
+    tol = 1e-10
+
+    ## Set the maximum number of iterations
+    max_iter = 10000
+
+    ## Set the initial distance between the value functions to be greater than the tolerance
+    dist = 10 * tol
+
+    ## Set the iteration counter to 0
+    iter = 0
+
+    ## While tolerance is not met and the maximum number of iterations is not exceeded,
+    ## update the value function.
+
+    while dist > tol && iter < max_iter
+
+        ## Update the iteration counter
+        iter += 1
+        println("Iteration: ", iter)
+
+        ## For each possible value of cash-on-hand, calculate maximum attainable utility 
+        ## and the corresponding optimal bond holdings.
+        for (i, x) in enumerate(x_grid)
+
+            ## Set up a vector with utility for each candidate saving choice 
+
+            u_vec = zeros(ns)
+
+            for (j, s) in enumerate(s_grid)
+
+                ## Calculate the instantaneous utility of consumption x - s 
+
+                u_inst = u(x - s, ρ)
+
+                ## For each value of y, calculate the continutation utility from wealth Rs + y 
+
+                u_cont = zeros(n)
+
+                for (k, y) in enumerate(y_grid)
+
+                    ## Find the index of the closest value of Rs + y in the grid
+                    ind = findmin(abs.(x_grid .- (R * s + y)))[2]
+
+                    ## Calculate the continuation utility
+                    u_cont[k] = V_old[ind]
+
                 end
+
+                ## Calculate the expected continuation utility
+                E_u_cont = sum(u_cont .* p_grid)
+
+                ## Calculate the total utility, summing instantaneous
+                ## and expected continuation utility. 
+
+                u_total = u_inst + (1 / (1 + δ)) * E_u_cont
+
+                ## Assign this total utility to the appropriate element of the utility vector
+                u_vec[j] = u_total
+
             end
-            VV_new[w_index,y_index] = maximum(VV_cands)
+
+            ## Find the index of the maximum utility
+            ind = findmax(u_vec)[2]
+
+            ## Assign the maximum utility to the appropriate element of the value function
+            V_new[i] = u_vec[ind]
+
+            ## Assign the optimal bond holdings to the appropriate element of the policy function
+            s_opt[i] = s_grid[ind]
+
+            ## Assign the optimal consumption to the appropriate element of the consumption function
+            c_opt[i] = x - s_opt[i]
+
         end
+
+        ## Update the distance between the value functions
+        dist = maximum(abs.(V_new - V_old))
+        println("Difference in V's: ", dist)
+
+        ## Update the old value function
+        V_old = V_new
+
     end
-    return VV_new
+
+    ## Return the value function and the policy functions
+
+    return V_new, s_opt, c_opt
+
 end
 
+# ----------------------------------------------------------------------------- #
 
+# ## Solve the consumption savings problem for 
+# ## ρ = 2, σ = 0.10, μ = 100, R = 1.05, δ = 0.10
 
-T!(V) # Check that the Bellman operator works
+# V, s_opt, c_opt = solve_csp(2, 0.10, 100, 1.05, 0.10, x_grid, s_grid)
 
+# plot(x_grid, c_opt, label = "Consumption", xlabel = "Cash-on-hand", ylabel = "Consumption", legend = :topleft)
 
+# ----------------------------------------------------------------------------- #
 
+# Solve the Consumption savings case problem for the following four cases: 
+## 1) ρ = 2, σ = 10 
+## 2) ρ = 2, σ = 15 
+## 3) ρ = 3, σ = 10
+## 4) ρ = 3, σ = 15
 
-# Value function iteration
-tol = 1e-6 # Tolerance for convergence
-max_iter = 1000 # Maximum number of iterations
-V_sol = fixedpoint(T!, V, iterations=max_iter, xtol=tol, m = 0).zero
+## Case 1
+V1, s_opt1, c_opt1 = solve_csp(2, 10, 100, 1.05, 0.10, x_grid, s_grid)
 
-# Find the policy functions
-V_sol_Spline = [Spline1D(w_grid, V_sol[:,i]; k = 3) for i in 1:nS]
-for (w_index, w)  in enumerate(w_grid)
-    for (y_index, y) in enumerate(s)
-        # Find the index of the optimal bond holdings
-        VV_cands = zeros(nB)
-        for (b′_index, b′) in enumerate(b_grid) # Borrowing constraint is imposed from the grid.
-            if w <= b′/R
-                VV_cands[b′_index] = -1e30
-            else
-                rhs_bellman = u(w - b′/R, ρ) + β*sum(V_sol_Spline[y′_index](b′ + y′)*Π[y_index,y′_index] for (y′_index, y′) in enumerate(s))
-                VV_cands[b′_index] = rhs_bellman
-            end
-        end
-        b′_sol[w_index,y_index] = b_grid[argmax(VV_cands)]
-        # DOES NOT WORK: b′_sol[w_index,s] = argmax(b′ -> u(w - R^-1 * b′, ρ) + β*sum(V_sol_Spline[y′_index](b′ + y′)*Π[s,y′_index] for (y′_index, y′) in enumerate(s)))
-        # Find the optimal cash-on-hand
-        c_sol[w_index,y_index] = w - R^-1 * b′_sol[w_index,y_index]
-    end
-end
-# Plot the policy functions with axes having ticks of the same size
-plot(w_grid[1:40], b′_sol[1:40,5], label = "b′", title = "Policy functions", xlabel = "w", ylabel = "b′")
-plot(w_grid, c_sol[:,3], label = "c", xlabel = "w", ylabel = "c", title = "Policy function for consumption")
-plot!(w_grid, w_grid, label = "45 deg line")
-plot(w_grid, w_grid .- c_sol[:,2], label = "c", xlabel = "w", ylabel = "c", title = "Policy function for consumption")
+# ## Case 2
+# V2, s_opt2, c_opt2 = solve_csp(2, 15, 100, 1.05, 0.10, x_grid, s_grid)
 
-# Plot the c so that each column of c has different colour
-plot(w_grid, c_sol, label = "c", xlabel = "w", ylabel = "c", title = "Policy function for consumption", legend = :topleft)
+# ## Case 3
+# V3, s_opt3, c_opt3 = solve_csp(3, 10, 100, 1.05, 0.10, x_grid, s_grid)
 
+# ## Case 4
+# V4, s_opt4, c_opt4 = solve_csp(3, 15, 100, 1.05, 0.10, x_grid, s_grid)
 
+## Plot the consumption policy functions all on the same graph. 
 
+plot(x_grid, c_opt1, label = "ρ = 2, σ = 10", xlabel = "Cash-on-hand", ylabel = "Consumption", legend = :topleft)
+# plot!(x_grid, c_opt2, label = "ρ = 2, σ = 15")
+# plot!(x_grid, c_opt3, label = "ρ = 3, σ = 10")
+# plot!(x_grid, c_opt4, label = "ρ = 3, σ = 15")
 
-(w_grid .- c_sol[:,2] .>= 0
+# ----------------------------------------------------------------------------- #
 
-# Iterate the value function until convergence#
+# Simulate an income process for 200 periods where μ = 100 
+# and σ = 10. 
 
-# Initialize value function
-V = zeros(nW,nS)
-# Reasonable guess: for every element of the grid, the value function is the utility of the grid element
-for (i_w, w) in enumerate(w_grid)
-    for j in 1:nS
-        V[i_w,j] = u(w, ρ)
-    end
-end
-tol = 1e-6 # Tolerance for convergence
-max_iter = 1000 # Maximum number of iterations
-error = 10
-i = 0
-while i < max_iter && error > tol
-        V_next = 0.5*V +0.5*T!( V)
-        error = norm(V_next - V)
-        i += 1
-        V = V_next  # copy contents into V.  Also could have used V[:] = v_next
+R = 1.05
 
-    if i == max_iter
-        error("Didn't converge")      
-    else
-        for (w_index, w)  in enumerate(w_grid)
-            for (s, y) in enumerate(s)
-                # Find the index of the optimal bond holdings
-                b′_sol[w_index,s] = argmax(b′ -> u(w - R^-1*b′, ρ) + β*sum(Π[s,:].*V_sol[s,:]), b′)
-                # Find the optimal cash-on-hand
-                c_sol[w_index,s] = w - R^-1 * b′_sol[w_index,s]
-            end
-        end
-    end
+## Draw 200 values from N(100, 10)
+
+y_t = rand(Normal(100, 10), 200)
+
+## Using the optimal saving function s_opt1, plot how wealth s + y 
+## evolves over time.
+
+s_t = zeros(200)
+s_t[1] = s_opt1[findmin(abs.(x_grid .- (0 + y_t[1])))[2]]
+
+for t in 2:200
+
+    s_t[t] = s_opt1[findmin(abs.(x_grid .- (R * s_t[t-1] + y_t[t])))[2]]
+
 end
 
+## Using the optimal consumption function c_opt1, plot how consumption
+## evolves over time.
 
+c_t = zeros(200)
 
+c_t[1] = c_opt1[findmin(abs.(x_grid .- (0 + y_t[1])))[2]]
 
-# Plot the policy functions
+for t in 2:200
 
+    c_t[t] = c_opt1[findmin(abs.(x_grid .- (R * s_t[t-1] + y_t[t])))[2]]
 
-argmax(b -> u(w[5] - b, ρ) + β*sum(Π[3,:].*V[5,:]), b)
+end
+
+## Plot the paths of income, saving, and consumption 
+
+plot(y_t, label = "Income", xlabel = "Time", ylabel = "Income", legend = :topleft)
+plot!(s_t, label = "Savings")
+c_t_down = c_t .- 40
+plot!(c_t_down, label = "Consumption - 40")
