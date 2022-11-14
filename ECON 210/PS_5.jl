@@ -43,8 +43,8 @@ end
 
 ### Define the grid sizes 
 
-nx = 200 # number of grid points for cash-on-hand x
-ns = 200 # number of grid points for saving s
+nx = 100 # number of grid points for cash-on-hand x
+ns = 100 # number of grid points for saving s
 
 ## Define the grids. 
 ## Note that the saving grid implicitly contains the borrowing constraint. 
@@ -201,10 +201,13 @@ function solve_csp(ρ, σ, μ, R, δ, x_grid, s_grid)
 
         ## Update the distance between the value functions
         dist = maximum(abs.(V_new - V_old))
+        println(V_new)
+        println(V_old)
         println("Difference in V's: ", dist)
 
-        ## Update the old value function
-        V_old = V_new
+        ## Update the old value function, which will be used in the next iteration
+
+        V_old = copy(V_new)
 
     end
 
@@ -252,43 +255,43 @@ plot(x_grid, c_opt1, label = "ρ = 2, σ = 10", xlabel = "Cash-on-hand", ylabel 
 
 # ----------------------------------------------------------------------------- #
 
-# Simulate an income process for 200 periods where μ = 100 
-# and σ = 10. 
+# # Simulate an income process for 200 periods where μ = 100 
+# # and σ = 10. 
 
-R = 1.05
+# R = 1.05
 
-## Draw 200 values from N(100, 10)
+# ## Draw 200 values from N(100, 10)
 
-y_t = rand(Normal(100, 10), 200)
+# y_t = rand(Normal(100, 10), 200)
 
-## Using the optimal saving function s_opt1, plot how wealth s + y 
-## evolves over time.
+# ## Using the optimal saving function s_opt1, plot how wealth s + y 
+# ## evolves over time.
 
-s_t = zeros(200)
-s_t[1] = s_opt1[findmin(abs.(x_grid .- (0 + y_t[1])))[2]]
+# s_t = zeros(200)
+# s_t[1] = s_opt1[findmin(abs.(x_grid .- (0 + y_t[1])))[2]]
 
-for t in 2:200
+# for t in 2:200
 
-    s_t[t] = s_opt1[findmin(abs.(x_grid .- (R * s_t[t-1] + y_t[t])))[2]]
+#     s_t[t] = s_opt1[findmin(abs.(x_grid .- (R * s_t[t-1] + y_t[t])))[2]]
 
-end
+# end
 
-## Using the optimal consumption function c_opt1, plot how consumption
-## evolves over time.
+# ## Using the optimal consumption function c_opt1, plot how consumption
+# ## evolves over time.
 
-c_t = zeros(200)
+# c_t = zeros(200)
 
-c_t[1] = c_opt1[findmin(abs.(x_grid .- (0 + y_t[1])))[2]]
+# c_t[1] = c_opt1[findmin(abs.(x_grid .- (0 + y_t[1])))[2]]
 
-for t in 2:200
+# for t in 2:200
 
-    c_t[t] = c_opt1[findmin(abs.(x_grid .- (R * s_t[t-1] + y_t[t])))[2]]
+#     c_t[t] = c_opt1[findmin(abs.(x_grid .- (R * s_t[t-1] + y_t[t])))[2]]
 
-end
+# end
 
-## Plot the paths of income, saving, and consumption 
+# ## Plot the paths of income, saving, and consumption 
 
-plot(y_t, label = "Income", xlabel = "Time", ylabel = "Income", legend = :topleft)
-plot!(s_t, label = "Savings")
-c_t_down = c_t .- 40
-plot!(c_t_down, label = "Consumption - 40")
+# plot(y_t, label = "Income", xlabel = "Time", ylabel = "Income", legend = :topleft)
+# plot!(s_t, label = "Savings")
+# c_t_down = c_t .- 40
+# plot!(c_t_down, label = "Consumption - 40")
