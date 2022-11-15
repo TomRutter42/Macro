@@ -68,7 +68,7 @@ r = 0.05
 ### standard deviation σ, using the Tauchen method.
 
 ### Construct transition matrix for the AR(1) process. 
-ny = 50 # number of grid points for income y
+ny = 100 # number of grid points for income y
 ψ = 0 # persistence parameter of the AR(1) process
 σ = 10.0 # standard deviation of the income process
 μ = 100.0 # mean of the income process
@@ -431,11 +431,164 @@ savefig("ConsumptionCases.png")
 
 # ----------------------------------------------------------------------------- #
 
+# ----------------------------------------------------------------------------- #
+
+# Simulate an income process for 200 periods where μ = 100 
+# and σ = 10. 
+
+σ = 10.0 # standard deviation of the income process
+MChain = QuantEcon.tauchen(ny, ψ, σ, 0, 4.5)
+Π = MChain.p
+y_grid = MChain.state_values .+ μ
+
+R = 1.05
+
+## Draw 200 values from N(100, 10)
+
+y_t = rand(Normal(100, 10), 200)
+
+## Using the optimal saving function s_opt1, plot how wealth s + y 
+## evolves over time.
+
+# Define an optimal saving function based on the consumption function
+s_optimal_1 = zeros(nbp, ny)
+for (i, b) in enumerate(b′_grid)
+    for (j, y) in enumerate(y_grid)
+        s_optimal_1[i, j] = b + y - consumption_fn1[i, j]
+    end
+end
+
+s_t = zeros(200)
+w_t = zeros(200)
+c_t = ones(200)
+
+# for i in 1:200
+#     # find index of y_grid closest to y_t[i]
+#     y_ind = findmin(abs.(y_grid .- y_t[i]))[2]
+#     if i == 1
+#         c_t[i] = consumption_fn1[1, y_ind]
+#         s_t[i] = y_t[i] - c_t[i]
+#     else
+         
+#         c_t[i] = consumption_fn1[findmin(abs.(b′_grid .- R * s_t[i - 1]))[2], y_ind]
+#         s_t[i] = R * s_t[i - 1] + y_t[i] - c_t[i]
+
+#     end
+# end
+
+for i in 1:200 
+    # find index of y_grid closest to y_t[i]
+    y_ind = findmin(abs.(y_grid .- y_t[i]))[2]
+    if i == 1
+        s_t[i] = s_optimal_1[1, y_ind]
+        # ## get rid of rounding error that can cause s_t to fall slightly below 0 
+        # if s_t[i] < 0
+        #     s_t[i] = 0
+        # end
+        c_t[i] = y_t[i] - s_t[i]
+    else
+        s_t[i] = s_optimal_1[findmin(abs.(b′_grid .- R * s_t[i - 1]))[2], y_ind]
+        ## get rid of rounding error that can cause s_t to fall slightly below 0 
+        if s_t[i] < 0
+            s_t[i] = 0
+        end
+        c_t[i] = y_t[i] + s_t[i - 1] - s_t[i]
+    end
+end 
+
+## Plot the paths of income, saving, and consumption 
+
+plot(y_t, label = "Income", xlabel = "Time", ylabel = "Income", legend = :topleft)
+plot!(s_t, label = "Savings")
+c_t_down = c_t .- 40
+plot!(c_t_down, label = "Consumption - 40")
+
+## Save the plot: 
+savefig("IncomeSavingConsumptionEG.png")
+
+# ----------------------------------------------------------------------------- #
+
+# AR(1) process
+
+### Construct transition matrix for the AR(1) process. 
+# ny = 100 # number of grid points for income y
+ψ = 0.70 # persistence parameter of the AR(1) process, this is different to before. 
+σ = 10.0 # standard deviation of the income process
+μ = 100.0 # mean of the income process
+MChain = QuantEcon.tauchen(ny, ψ, σ, 0, 3.0)
+Π = MChain.p
+y_grid = MChain.state_values .+ μ
+
+println("The transition matrix Π is: ")
+display(Π)
+println(" ")
+println("The grid for y is: ")
+display(y_grid)
+
+consumption_fn_ar1 = iterate(0.02, 0.05, 2.0, Π, b′_grid, y_grid, c_old, 10^(-6))
+
+## Plot the consumption function for the AR(1) process, 
+## for given cash on hand, by income level.
+
+plot(b′_grid .+ y_grid[1], consumption_fn_ar1[:, 1])
+for i in 2:50 
+    ## move to the next loop if i is not multiple of 10 
+    if i % 10 != 0
+        continue
+    end
+    plot!(b′_grid .+ y_grid[i], consumption_fn_ar1[:, i])
+end
+
+## no legend on the chart 
+plot!(legend = false)
+
+savefig("AR1_by_.png")
 
 
+## Simulate 200 periods of the AR(1) process, starting at y = 100.
 
+y_t = zeros(200)
+y_t[1] = 100
+for i in 2:200
+    shock = rand(Normal(0, 10))
+    y_t[i] = 100 + 0.7 * (y_t[i - 1] - 100) + shock
+end
 
+# Define an optimal saving function based on the consumption function
+s_optimal_1 = zeros(nbp, ny)
+for (i, b) in enumerate(b′_grid)
+    for (j, y) in enumerate(y_grid)
+        s_optimal_1[i, j] = b + y - consumption_fn_ar1[i, j]
+    end
+end
 
+for i in 1:200 
+    # find index of y_grid closest to y_t[i]
+    y_ind = findmin(abs.(y_grid .- y_t[i]))[2]
+    if i == 1
+        s_t[i] = s_optimal_1[1, y_ind]
+        # ## get rid of rounding error that can cause s_t to fall slightly below 0 
+        # if s_t[i] < 0
+        #     s_t[i] = 0
+        # end
+        c_t[i] = y_t[i] - s_t[i]
+    else
+        s_t[i] = s_optimal_1[findmin(abs.(b′_grid .- R * s_t[i - 1]))[2], y_ind]
+        ## get rid of rounding error that can cause s_t to fall slightly below 0 
+        if s_t[i] < 0
+            s_t[i] = 0
+        end
+        c_t[i] = y_t[i] + s_t[i - 1] - s_t[i]
+    end
+end 
+
+plot(y_t, label = "Income", xlabel = "Time", ylabel = "Income", legend = :topleft)
+plot!(s_t, label = "Savings")
+c_t_down = c_t .- 40
+plot!(c_t_down, label = "Consumption - 40")
+
+## Save the plot: 
+savefig("IncomeSavingConsumptionEG_AR.png")
 
 
 
