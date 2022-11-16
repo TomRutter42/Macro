@@ -5,11 +5,6 @@
 cd(@__DIR__)
 
 # ----------------------------------------------------------------------------- #
-println(" ")
-println("-------------------------------------------------------------------")
-println(" ")
-println("Start of Run")
-println(" ")
 
 # Packages
 using Distributions
@@ -76,12 +71,6 @@ MChain = QuantEcon.tauchen(ny, ψ, σ, 0, 4.5)
 Π = MChain.p
 y_grid = MChain.state_values .+ μ
 
-println("The transition matrix Π is: ")
-display(Π)
-println(" ")
-println("The grid for y is: ")
-display(y_grid)
-
 # ----------------------------------------------------------------------------- #
 
 ## Step 2: Construct a grid on (b′, y)
@@ -93,9 +82,6 @@ nbp = 500 # number of grid points for bond choice b′
 ### Use a log-spaced grid for saving b′.
 ### Note that the saving grid implicitly contains the borrowing constraint.
 b′_grid = exp.(range(0, log(300), length = nbp)) .- 1
-println(" ")
-println("The grid for b′ is: ")
-display(b′_grid)
 
 # ----------------------------------------------------------------------------- #
 
@@ -109,10 +95,6 @@ for i in 1:nbp
         c_old[i, j] = r * b′_grid[i] + y_grid[j]
     end
 end
-
-println(" ")
-println("The initial guess for the consumption function is: ")
-display(c_old)
 
 # ----------------------------------------------------------------------------- #
 
@@ -142,10 +124,6 @@ function calculate_RHS(r, δ, ρ, Π, b′_grid, y_grid, c_old)
     return RHS
 
 end
-
-println(" ")
-println("The RHS of the Euler equation, for our initial c guess, is: ")
-display(calculate_RHS(r, δ, ρ, Π, b′_grid, y_grid, c_old))
 
 
 # ----------------------------------------------------------------------------- #
@@ -180,10 +158,6 @@ function solve_c(r, δ, ρ, Π, b′_grid, y_grid, c_old)
 
 end
 
-println(" ")
-println("The consumption values satisfying Euler, for our initial c guess, are: ")
-display(solve_c(r, δ, ρ, Π, b′_grid, y_grid, c_old))
-
 # ----------------------------------------------------------------------------- #
 
 ## Step 6: Use the budget constraint to solve for savings function
@@ -217,16 +191,6 @@ function calculate_savings_consumption(r, δ, ρ, Π, b′_grid, y_grid, c_old)
     return b_endog_grid, c_endog_grid, b_thr
 
 end
-
-# println(" ")
-# println("The savings function, for our initial c guess, is: ")
-# display(calculate_savings(r, δ, ρ, Π, b′_grid, y_grid, c_old)[1])
-# println(" ")
-# println("The consumption function, for our initial c guess, is: ")
-# display(calculate_savings(r, δ, ρ, Π, b′_grid, y_grid, c_old)[2])
-# println(" ")
-# println("The threshold savings function, for our initial c guess, is: ")
-# display(calculate_savings(r, δ, ρ, Π, b′_grid, y_grid, c_old)[3])
 
 # ----------------------------------------------------------------------------- #
 
@@ -295,10 +259,6 @@ function update_c(r, δ, ρ, Π, b′_grid, y_grid, c_old)
 
 end
 
-println(" ")
-println("The updated consumption function, for our initial c guess, is: ")
-display(update_c(r, δ, ρ, Π, b′_grid, y_grid, c_old))
-
 # ----------------------------------------------------------------------------- #
 
 ## Step 7: Iterate the above until convergence.
@@ -338,13 +298,6 @@ function iterate(r, δ, ρ, Π, b′_grid, y_grid, c_old, tol)
         # functions
         max_dist = maximum(dist)
 
-        # println("Iteration number: ", iter)
-        # println("Distance: ", max_dist)
-        # println("The updated consumption function is: ")
-        # display(c_new)
-        # println("The Matrix of Distance is: ")
-        # display(c_new - c_old)
-
         # Update the old consumption function
         c_old = deepcopy(c_new)
 
@@ -365,10 +318,6 @@ end
 
 consumption_fn = iterate(r, δ, ρ, Π, b′_grid, y_grid, c_old, 10^(-6))
 
-println(" ")
-println("The consumption function, after iterating, is: ")
-display(consumption_fn)
-
 ## Plot the consumption function for each level of bonds b.
 
 ## Plot consumption_fn when income = 70
@@ -378,8 +327,6 @@ display(consumption_fn)
 ## doesn't matter here since income is iid.
 
 plot(b′_grid .+ 70, consumption_fn[:, 1])
-## add line y = x
-# plot!(b′_grid .+ 70, b′_grid .+ 70, label = "45 degree line")
 
 # ----------------------------------------------------------------------------- #
 
@@ -410,9 +357,6 @@ plot(b′_grid .+ 55, consumption_fn1[:, 1], label = "ρ = 2, σ = 10")
 plot!(b′_grid .+ 55, consumption_fn2[:, 1], label = "ρ = 2, σ = 15")
 plot!(b′_grid .+ 55, consumption_fn3[:, 1], label = "ρ = 3, σ = 10")
 plot!(b′_grid .+ 55, consumption_fn4[:, 1], label = "ρ = 3, σ = 15")
-
-# ## Add a dotted 45 degree line
-# plot!(b′_grid .+ 55, b′_grid .+ 55, label = "45 Degree Line", ls = :dot)
 
 # Label the y axis as "Consumption"
 ylabel!("Consumption")
@@ -462,36 +406,14 @@ s_t = zeros(200)
 w_t = zeros(200)
 c_t = ones(200)
 
-# for i in 1:200
-#     # find index of y_grid closest to y_t[i]
-#     y_ind = findmin(abs.(y_grid .- y_t[i]))[2]
-#     if i == 1
-#         c_t[i] = consumption_fn1[1, y_ind]
-#         s_t[i] = y_t[i] - c_t[i]
-#     else
-
-#         c_t[i] = consumption_fn1[findmin(abs.(b′_grid .- R * s_t[i - 1]))[2], y_ind]
-#         s_t[i] = R * s_t[i - 1] + y_t[i] - c_t[i]
-
-#     end
-# end
-
 for i in 1:200
     # find index of y_grid closest to y_t[i]
     y_ind = findmin(abs.(y_grid .- y_t[i]))[2]
     if i == 1
         s_t[i] = s_optimal_1[1, y_ind]
-        # ## get rid of rounding error that can cause s_t to fall slightly below 0
-        # if s_t[i] < 0
-        #     s_t[i] = 0
-        # end
         c_t[i] = y_t[i] - s_t[i]
     else
         s_t[i] = s_optimal_1[findmin(abs.(b′_grid .- R * s_t[i - 1]))[2], y_ind]
-        ## get rid of rounding error that can cause s_t to fall slightly below 0
-        if s_t[i] < 0
-            s_t[i] = 0
-        end
         c_t[i] = y_t[i] + s_t[i - 1] - s_t[i]
     end
 end
@@ -518,12 +440,6 @@ savefig("IncomeSavingConsumptionEG.png")
 MChain = QuantEcon.tauchen(ny, ψ, σ, 0, 3.0)
 Π = MChain.p
 y_grid = MChain.state_values .+ μ
-
-println("The transition matrix Π is: ")
-display(Π)
-println(" ")
-println("The grid for y is: ")
-display(y_grid)
 
 consumption_fn_ar1 = iterate(0.02, 0.05, 2.0, Π, b′_grid, y_grid, c_old, 10^(-6))
 
@@ -572,17 +488,9 @@ for i in 1:200
     y_ind = findmin(abs.(y_grid .- y_t[i]))[2]
     if i == 1
         s_t[i] = s_optimal_1[1, y_ind]
-        # ## get rid of rounding error that can cause s_t to fall slightly below 0
-        # if s_t[i] < 0
-        #     s_t[i] = 0
-        # end
         c_t[i] = y_t[i] - s_t[i]
     else
         s_t[i] = s_optimal_1[findmin(abs.(b′_grid .- R * s_t[i - 1]))[2], y_ind]
-        ## get rid of rounding error that can cause s_t to fall slightly below 0
-        if s_t[i] < 0
-            s_t[i] = 0
-        end
         c_t[i] = y_t[i] + s_t[i - 1] - s_t[i]
     end
 end
