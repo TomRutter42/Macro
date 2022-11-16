@@ -420,7 +420,7 @@ end
 
 ## Plot the paths of income, saving, and consumption
 
-plot(y_t, label = "Income", xlabel = "Time", ylabel = "Savings     Consumption  Income    ", legend = :outertop)
+plot(y_t, label = "Income", xlabel = "Time", ylabel = "Savings, Consumption, Income", legend = :outertop)
 plot!(s_t, label = "Savings")
 c_t_down = c_t .- 40
 plot!(c_t_down, label = "Consumption - 40")
@@ -495,7 +495,7 @@ for i in 1:200
     end
 end
 
-plot(y_t, label = "Income", xlabel = "Time", ylabel = "Savings     Consumption  Income    ", legend = :outertop)
+plot(y_t, label = "Income", xlabel = "Time", ylabel = "Savings, Consumption, Income", legend = :outertop)
 plot!(s_t, label = "Savings")
 c_t_down = c_t .- 40
 plot!(c_t_down, label = "Consumption - 40")
