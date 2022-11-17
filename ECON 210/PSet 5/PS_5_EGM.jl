@@ -445,14 +445,15 @@ consumption_fn_ar1 = iterate(0.02, 0.05, 2.0, Π, b′_grid, y_grid, c_old, 10^(
 
 ## Plot the consumption function for the AR(1) process,
 ## for given cash on hand, by income level.
-
-plot(b′_grid .+ y_grid[1], consumption_fn_ar1[:, 1])
+# Add a legend where we round income to the nearest two digits, and say "Income = ".
+plot(b′_grid .+ y_grid[1], consumption_fn_ar1[:, 1], label = "Income = $(round(y_grid[1], digits = 1))")
+ 
 for i in 2:50
     ## move to the next loop if i is not multiple of 10
     if i % 10 != 0
         continue
     end
-    plot!(b′_grid .+ y_grid[i], consumption_fn_ar1[:, i])
+    plot!(b′_grid .+ y_grid[i], consumption_fn_ar1[:, i], label = "Income = $(round(y_grid[i], digits = 1))")
 end
 
 # Label the y axis as "Consumption"
@@ -460,8 +461,8 @@ ylabel!("Consumption")
 # Label the x axis as "Cash on Hand"
 xlabel!("Cash on Hand")
 
-## no legend on the chart
-plot!(legend = false)
+# Move the legend to the top left corner
+plot!(legend = :topleft)
 
 savefig("AR1_by_.png")
 
