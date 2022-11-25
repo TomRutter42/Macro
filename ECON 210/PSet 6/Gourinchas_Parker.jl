@@ -4,8 +4,10 @@
 
 # Import packages
 
-using QuantEcon
+using Distributions
+using Interpolations
 using Plots
+using QuantEcon
 using Random
 
 # set current folder as the working directory
@@ -108,14 +110,18 @@ plot!(legend = false)
 
 savefig("income_process_sims.png")
 
+for t = 1:T
+    A[t] = (-3.12 + 0.26 * (t + 20) - 0.0024 * (t + 20)^2 ) / 1.12
+end
+
 # ------------------------------------------------------------
 
 # Solve finite-horizon Gourinchas-Parker model. 
 
 ### Step 1: Choose a grid for normalized cash on hand. 
 
-n = 10
-w_hat_grid = exp.(range(0, log(300)), length = n) .- 1
+n = 800
+w_hat_grid = exp.(range(0, log(15), length = n)) .- 1
 w_hat_grid
 
 ### Step 2: Specify Primitives
@@ -123,8 +129,8 @@ w_hat_grid
 #### Utility is CRRA.
 
 function u(c, γ)
-    if c <= 0.001
-        return -10^10
+    if c < 0.01 
+        return -10^10 
     else
         return (c^(1 - γ) - 1) / (1 - γ)
     end
@@ -138,7 +144,7 @@ R = 1.10
 
 #### Define a value function matrix 
 
-V = zeros(n, T+1)
+V = zeros(n, T)
 
 #### Define a policy function matrix
 C = zeros(n, T)
@@ -158,9 +164,11 @@ C[:, T] = w_hat_grid
 
 ##### Define a function to solve the problem in period t.
 
-function backwards(t, V_next) 
+d = Normal(0, σ)
 
-    V_t = zeros(n)
+function backwards(t, V_next, num_draws) 
+
+    V_t = zeros(n) .- 10^11
     C_t = zeros(n)
 
     ### Define a function to solve the problem in period t. 
@@ -173,20 +181,37 @@ function backwards(t, V_next)
     ### - V: the value function in period t
     ### - c: the policy function in period t 
 
+    ## Take a linear interpolation over V_next. 
+    V_next_interp = LinearInterpolation(w_hat_grid, V_next)
+
     for i in 1:n 
         for j in 1:n 
             ### Define the cash on hand in period t
             w_hat = w_hat_grid[i]
             ### Take consumption in period T
             c_cand = w_hat_grid[j]
-            ### Define the continuation utility 
-            
-            ### Define the value function in period t
-            V_cand = u(c, γ) + β * V_next[j]
-            ### If c_cand is greater than w_hat, then the borrowing constraint 
-            ### is violated. 
+            ### Take draws 
+            ### set seed 
+            Random.seed!(7)
+            draws = rand(d, num_draws)
+            exp_draws = exp.(draws)
+            ### Calculate income in next period 
+            w_next = R .* (w_hat - c_cand) ./ exp_draws .+ A[t + 1]
             if c_cand > w_hat
+                ### If c_cand is greater than w_hat, then the borrowing constraint 
+                ### is violated.
                 V_cand = -10^10
+            else
+                for k in 1:length(w_next)
+                    if w_next[k] > maximum(w_hat_grid)
+                        ## in this case overaccumulates assets, 
+                        ## set the wealth to the maximum value on the grid
+                        ## so as not to break the interpolation
+                        w_next[k] = maximum(w_hat_grid)
+                    end
+                end
+                ### Calculate candidate value function in period t
+                V_cand = u(c_cand, γ) + β * mean(V_next_interp.(w_next) .* exp_draws.^(1 - γ)) 
             end
             ### If the value function is higher than the current value function, 
             ### update the value function and the policy function. 
@@ -195,7 +220,29 @@ function backwards(t, V_next)
                 C_t[i] = c_cand
             end
         end
+    end
 
+    return V_t, C_t
 
+end
 
+### Solve the model backwards, starting in period T-1.
 
+# V_sub, C_sub = backwards(T-1, V[:, T], 100)
+
+for t in T-1:-1:1
+    println(t)
+    V[:, t], C[:, t] = backwards(t, V[:, t+1], 50)
+end
+
+### Save V and C to a file. 
+
+using JLD
+save("V.jld", "V", V)
+save("C.jld", "C", C)
+save("w_hat_grid.jld", "w_hat_grid", w_hat_grid)
+
+# Plot C at various ages
+
+plot(w_hat_grid, C[:, 1], xlabel = "Cash-On-Hand", 
+     legend = false, yformatter = :plain)
