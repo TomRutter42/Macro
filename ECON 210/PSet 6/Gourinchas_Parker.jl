@@ -18,9 +18,9 @@ cd(@__DIR__)
 ## Specify an age profile for the income process.
 
 adulthood = 20 
-retirement = 80
+death = 80
 
-T = retirement - adulthood 
+T = death - adulthood 
 
 A = zeros(T)
 
@@ -115,10 +115,8 @@ savefig("income_process_sims.png")
 ### Step 1: Choose a grid for normalized cash on hand. 
 
 n = 10
-
-a_grid = exp.(range(0, log(300), length = n)) .- 1
-
-a_grid
+w_hat_grid = exp.(range(0, log(300)), length = n) .- 1
+w_hat_grid
 
 ### Step 2: Specify Primitives
 
@@ -137,3 +135,67 @@ end
 β = 0.90 
 γ = 4.0
 R = 1.10
+
+#### Define a value function matrix 
+
+V = zeros(n, T+1)
+
+#### Define a policy function matrix
+C = zeros(n, T)
+
+#### In the final period, the value function is just utility of cash on hand.
+
+V[:, T] = zeros(n)
+
+#### Now, induct backwards to solve the model.
+#### In the final period before death T, agent dies at T+1, 
+#### the agent consumes all of their wealth. 
+
+V[:, T] = u.(w_hat_grid, γ) 
+C[:, T] = w_hat_grid
+
+#### Now, induct backwards to solve the model.
+
+##### Define a function to solve the problem in period t.
+
+function backwards(t, V_next) 
+
+    V_t = zeros(n)
+    C_t = zeros(n)
+
+    ### Define a function to solve the problem in period t. 
+    ### Inputs: 
+    ### - t: the period in which we are solving the problem
+    ### - V_next: the value function in the next period
+    ### - w_hat_grid: the grid for normalized cash on hand
+
+    ### Outputs: 
+    ### - V: the value function in period t
+    ### - c: the policy function in period t 
+
+    for i in 1:n 
+        for j in 1:n 
+            ### Define the cash on hand in period t
+            w_hat = w_hat_grid[i]
+            ### Take consumption in period T
+            c_cand = w_hat_grid[j]
+            ### Define the continuation utility 
+            
+            ### Define the value function in period t
+            V_cand = u(c, γ) + β * V_next[j]
+            ### If c_cand is greater than w_hat, then the borrowing constraint 
+            ### is violated. 
+            if c_cand > w_hat
+                V_cand = -10^10
+            end
+            ### If the value function is higher than the current value function, 
+            ### update the value function and the policy function. 
+            if V_cand > V_t[i]
+                V_t[i] = V_cand
+                C_t[i] = c_cand
+            end
+        end
+
+
+
+
