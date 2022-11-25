@@ -28,11 +28,14 @@ for t = 1:T
     A[t] = (-3.12 + 0.26 * (t + 20) - 0.0024 * (t + 20)^2 ) / 1.12
 end
 
+### Normalize the first entry of the income process to be 20,000.
+
+A = A / A[1] * 20000
+
 ## Plot the age profile A against an x-axis which is 
 ## the index of A plus 20. 
 ## No legend is needed.
-plot(20:T+20-1, A, xlabel = "Age", title = "Income Profile", 
-     legend = false, yaxis = ("Income", (0, 4.0)))
+plot(20:T+20-1, A, xlabel = "Age", title = "Income Profile", legend = false)
 
 
 ## Specify the transition matrix for the Markov chain.
@@ -55,12 +58,14 @@ mc_epsilon = tauchen(N, 0, σ, 0.0, m)
 ### - each row is a simulation of the epsilon process
 
 ### set seed 
-Random.seed!(42)
+Random.seed!(7)
 
 simulations = zeros(10, T)
 
 for i = 1:10
     simulations[i, :] = simulate(mc_epsilon, T)
+    ## No uncertainty in the first period. 
+    simulations[i, 1] = 0
 end
 
 ### Take the exponent of simulations 
@@ -87,11 +92,11 @@ for i = 1:10
 end
 
 ### Plot each of the ten simulations of the income process on the same graph. 
-### Set up the initial plot 
+### Set up the initial plot.
+### No standard form on the y-axis, with commas for thousands.
 
-plot(20:T+20-1, sims_exp_running_A[1, :], 
-     xlabel = "Age", title = "Simulations of Income Process", 
-     yaxis = ("Income", (0, 5.0)))
+plot(20:T+20-1, sims_exp_running_A[1, :], xlabel = "Age", 
+     legend = false, yformatter = :plain, yaxis = ("Income", (0, 5.0 * 20000)))
 
 for i = 2:10
     plot!(20:T+20-1, sims_exp_running_A[i, :])
@@ -103,8 +108,32 @@ plot!(legend = false)
 
 savefig("income_process_sims.png")
 
-
 # ------------------------------------------------------------
 
 # Solve finite-horizon Gourinchas-Parker model. 
 
+### Step 1: Choose a grid for normalized cash on hand. 
+
+n = 10
+
+a_grid = exp.(range(0, log(300), length = n)) .- 1
+
+a_grid
+
+### Step 2: Specify Primitives
+
+#### Utility is CRRA.
+
+function u(c, γ)
+    if c <= 0.001
+        return -10^10
+    else
+        return (c^(1 - γ) - 1) / (1 - γ)
+    end
+end
+
+#### Parameters: 
+
+β = 0.90 
+γ = 4.0
+R = 1.10
