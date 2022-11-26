@@ -34,7 +34,7 @@ plot(w_hat_grid, C[:, 26], xlabel = "Normalized Cash-On-Hand",
 for i = 35:10:65
     plot!(w_hat_grid, C[:, i], xlabel = "Normalized Cash-On-Hand", 
           ylabel = "Normalized Consumption", label = "Age = $i", 
-          legend = :topleft, xlims = (0, 3))
+          legend = :topleft, xlims = (0, 5))
 end
 
 ## Save file: 
