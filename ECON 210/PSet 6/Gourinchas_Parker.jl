@@ -9,6 +9,8 @@ using Interpolations
 using Plots
 using QuantEcon
 using Random
+using Statistics
+using StatsBase
 
 # set current folder as the working directory
 cd(@__DIR__)
@@ -45,7 +47,7 @@ plot(20:T+20-1, A, xlabel = "Age", title = "Income Profile", legend = false)
 ## - go to 5 standard deviations from the mean
 ## We specify the process for ε_t
 
-σ = 0.02
+σ = sqrt(0.02)
 N = 40
 m = 3
 
@@ -132,7 +134,7 @@ function u(c, γ)
     if c < 0.01 
         return -10^10 
     else
-        return (c^(1 - γ) - 1) / (1 - γ)
+        return c^(1 - γ) / (1 - γ)
     end
 end
 
@@ -184,6 +186,11 @@ function backwards(t, V_next, num_draws)
     ## Take a linear interpolation over V_next. 
     V_next_interp = LinearInterpolation(w_hat_grid, V_next)
 
+    ## Specify the markov chain for the income process.
+    mc_epsilon = tauchen(N, 0, σ, 0.0, m)
+    eps = mc_epsilon.state_values
+    probs = mc_epsilon.p
+
     for i in 1:n 
         for j in 1:n 
             ### Define the cash on hand in period t
@@ -191,10 +198,7 @@ function backwards(t, V_next, num_draws)
             ### Take consumption in period T
             c_cand = w_hat_grid[j]
             ### Take draws 
-            ### set seed 
-            Random.seed!(7)
-            draws = rand(d, num_draws)
-            exp_draws = exp.(draws)
+            exp_draws = exp.(eps)
             ### Calculate income in next period 
             w_next = R .* (w_hat - c_cand) ./ exp_draws .+ A[t + 1]
             if c_cand > w_hat
@@ -211,7 +215,7 @@ function backwards(t, V_next, num_draws)
                     end
                 end
                 ### Calculate candidate value function in period t
-                V_cand = u(c_cand, γ) + β * mean(V_next_interp.(w_next) .* exp_draws.^(1 - γ)) 
+                V_cand = u(c_cand, γ) + β * mean(V_next_interp.(w_next) .* exp_draws.^(1 - γ), weights(probs[1, :]))
             end
             ### If the value function is higher than the current value function, 
             ### update the value function and the policy function. 
@@ -232,7 +236,7 @@ end
 
 for t in T-1:-1:1
     println(t)
-    V[:, t], C[:, t] = backwards(t, V[:, t+1], 50)
+    V[:, t], C[:, t] = backwards(t, V[:, t+1], 10)
 end
 
 ### Save V and C to a file. 
