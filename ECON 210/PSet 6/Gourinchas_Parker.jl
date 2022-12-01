@@ -15,8 +15,6 @@ using StatsBase
 # set current folder as the working directory
 cd(@__DIR__)
 
-println(Threads.nthreads())
-
 # ------------------------------------------------------------
 
 # Part 1: Approximate the income process with a Markov chain. 
