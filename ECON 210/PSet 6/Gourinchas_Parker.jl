@@ -15,6 +15,8 @@ using StatsBase
 # set current folder as the working directory
 cd(@__DIR__)
 
+println(Threads.nthreads())
+
 # ------------------------------------------------------------
 
 # Part 1: Approximate the income process with a Markov chain. 
@@ -122,7 +124,7 @@ end
 
 ### Step 1: Choose a grid for normalized cash on hand. 
 
-n = 800
+n = 3000
 w_hat_grid = exp.(range(0, log(15), length = n)) .- 1
 w_hat_grid
 
@@ -187,36 +189,41 @@ function backwards(t, V_next, num_draws)
     V_next_interp = LinearInterpolation(w_hat_grid, V_next)
 
     ## Specify the markov chain for the income process.
-    mc_epsilon = tauchen(N, 0, σ, 0.0, m)
+    mc_epsilon = tauchen(num_draws, 0, σ, 0.0, m)
     eps = mc_epsilon.state_values
     probs = mc_epsilon.p
+    ### Take draws 
+    exp_draws = exp.(eps)
+    probs = probs[1, :]
+    max_w = maximum(w_hat_grid)
 
-    Threads.@threads for i in 1:n 
+    for i in 1:n 
+
+        ### Define the cash on hand in period t
+        w_hat = w_hat_grid[i]
+
         for j in 1:n 
-            ### Define the cash on hand in period t
-            w_hat = w_hat_grid[i]
+            
             ### Take consumption in period T
             c_cand = w_hat_grid[j]
-            ### Take draws 
-            exp_draws = exp.(eps)
+
+            ### omit cases with more consumption than wealth 
+            if c_cand > w_hat
+                continue
+            end
+            
             ### Calculate income in next period 
             w_next = R .* (w_hat - c_cand) ./ exp_draws .+ A[t + 1]
-            if c_cand > w_hat
-                ### If c_cand is greater than w_hat, then the borrowing constraint 
-                ### is violated.
-                V_cand = -10^10
-            else
-                for k in 1:length(w_next)
-                    if w_next[k] > maximum(w_hat_grid)
-                        ## in this case overaccumulates assets, 
-                        ## set the wealth to the maximum value on the grid
-                        ## so as not to break the interpolation
-                        w_next[k] = maximum(w_hat_grid)
-                    end
+            for k in 1:num_draws
+                if w_next[k] > max_w
+                    ## in this case overaccumulates assets, 
+                    ## set the wealth to the maximum value on the grid
+                    ## so as not to break the interpolation
+                    w_next[k] = max_w
                 end
-                ### Calculate candidate value function in period t
-                V_cand = u(c_cand, γ) + β * mean(V_next_interp.(w_next) .* exp_draws.^(1 - γ), weights(probs[1, :]))
             end
+            ### Calculate candidate value function in period t
+            V_cand = u(c_cand, γ) + β * mean(V_next_interp.(w_next) .* exp_draws.^(1 - γ), weights(probs))
             ### If the value function is higher than the current value function, 
             ### update the value function and the policy function. 
             if V_cand > V_t[i]
@@ -236,7 +243,7 @@ end
 
 for t in T-1:-1:1
     println(t)
-    V[:, t], C[:, t] = backwards(t, V[:, t+1], 10)
+    V[:, t], C[:, t] = backwards(t, V[:, t+1], 7)
 end
 
 ### Save V and C to a file. 
