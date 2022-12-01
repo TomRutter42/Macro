@@ -191,7 +191,7 @@ function backwards(t, V_next, num_draws)
     eps = mc_epsilon.state_values
     probs = mc_epsilon.p
 
-    for i in 1:n 
+    Threads.@threads for i in 1:n 
         for j in 1:n 
             ### Define the cash on hand in period t
             w_hat = w_hat_grid[i]
