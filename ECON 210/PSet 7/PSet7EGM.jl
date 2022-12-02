@@ -1,4 +1,4 @@
-# Solve Q1 of PSet 7 using Endogenous Grid Method
+# Solve Q1 of PSet 7. 
 
 # set current folder as the working directory
 cd(@__DIR__)
@@ -91,3 +91,19 @@ return_probs = return_chain.P
 
 w_0 = 0 
 y_0 = 0 
+
+# ============================================================================= #
+
+# Define an initial value function.
+
+V = zeros(grid_size)
+
+# ============================================================================= #
+
+# Define a function to calculate wealth distributions in the next period. 
+
+function wealth_dist(ϕ, b′, c, income_states, income_probs, return_states, return_probs)
+
+    
+    
+end
