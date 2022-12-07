@@ -323,7 +323,7 @@ function VFI(tol, V_init, u, w_grid, c_grid, ϕ_grid, R_f, num_income_states, nu
     dist = tol + 1
 
     V_spline = linear_interpolation(w_grid, V_init)
-    V = V_init
+    V = deepcopy(V_init)
     i = 0
     
     while dist > tol 
@@ -336,13 +336,14 @@ function VFI(tol, V_init, u, w_grid, c_grid, ϕ_grid, R_f, num_income_states, nu
 
         # Update the value function. 
 
-        V = V_new
+        V = deepcopy(V_new)
         V_spline = linear_interpolation(w_grid, V)
 
         
         i += 1
         println("Iteration: ", i)
         println("Distance ", dist)
+        println(V)
 
     end
 
