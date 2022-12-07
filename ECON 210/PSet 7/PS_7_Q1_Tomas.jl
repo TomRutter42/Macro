@@ -108,7 +108,7 @@ end
         TV = T(V, m, φ)
         dist = maximum(abs.(TV .- V))
         V = copy(TV)
-        print(dist)
+        println(dist)
     end
     return TV
 end
