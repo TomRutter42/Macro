@@ -50,7 +50,7 @@ end
 
 # ============================================================================= #
 
-γ = 0.5 # risk aversion
+γ = 0.5 # risk aversion --- need to change
 β = 0.9 
 μ_x = 4.7 
 σ_x = sqrt(0.01)
@@ -60,11 +60,11 @@ R_f = 1.01
 
 # ============================================================================= #
 
-grid_size = 1000
+grid_size = 10
 
 # Set up the fixed grid for wealth. 
 
-w_grid = exp.(range(0.01, log(400), length = grid_size)) .- 1
+w_grid = exp.(range(0.01, log(200), length = grid_size)) .- 1
 
 # ============================================================================= #
 
@@ -127,6 +127,8 @@ end
     # Initialize the consumption and portfolio savings policy functions. 
 
     V_new = zeros(grid_size)
+    c_pol = zeros(grid_size)
+    ϕ_pol = zeros(grid_size)
 
     # Step 1: find the critical wealth level at which the borrowing constraint binds.
 
@@ -145,6 +147,8 @@ end
         if w <= w_bar
 
             V_new[i] = u(w, γ) + β * mean(income_probs .* V_old.(income_states))
+            c_pol[i] = w
+            ϕ_pol[i] = 1
 
         else 
 
@@ -174,12 +178,14 @@ end
             res = optimize(p -> -objective(p[1], p[2]), lower, upper, initial_guess, Fminbox(NelderMead()))
 
             V_new[i] = -res.minimum
+            c_pol[i] = res.minimizer[1]
+            ϕ_pol[i] = res.minimizer[2]
 
         end 
 
     end
 
-    return V_new
+    return V_new, c_pol, ϕ_pol
 
 end
 
@@ -233,7 +239,7 @@ function VFI(u, u′, u′_inv, γ, β, income_states, income_probs, return_stat
 
     while dist > tol 
     
-        V_new = find_new_V(V_old_interp, V′_old_interp, u, u′_inv, γ, β, income_states, income_probs, return_states, return_probs, w_grid)
+        V_new, c_pol, ϕ_pol = find_new_V(V_old_interp, V′_old_interp, u, u′_inv, γ, β, income_states, income_probs, return_states, return_probs, w_grid)
 
         # Calculate distance between V_new and V_old.
         i = i + 1
@@ -272,11 +278,13 @@ function VFI(u, u′, u′_inv, γ, β, income_states, income_probs, return_stat
 
     end
 
-    return V_old 
+    return V_old, c_pol, ϕ_pol 
 
 end
 
 tol = 10^(-10)
-V_new = VFI(u, u′, u′_inv, γ, β, income_states, income_probs, return_states, return_probs, w_grid, tol)
+V_new, c_opt, ϕ_opt = VFI(u, u′, u′_inv, γ, β, income_states, income_probs, return_states, return_probs, w_grid, tol)
 
 plot(w_grid[2:end], V_new[2:end], label = "Value Function")
+plot(w_grid, c_opt, label = "Consumption Policy Function")
+plot(w_grid, ϕ_opt, label = "Risk-Share Policy Function")
