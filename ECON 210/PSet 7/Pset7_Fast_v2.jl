@@ -178,13 +178,19 @@ V_2 = VFI(tol_2)
 
 # Given V, solve for consumption and share of risky assets.
 
+@everywhere len = length(w_grid)
+
+@everywhere factor = 3
+
+@everywhere new_w_grid = exp.(range(log(0.001), log(300), length = factor * len))
+
 function solve_policy(V)
 
     # Initialize policy functions
 
     @everywhere len = length(w_grid)
 
-    @everywhere factor = 10
+    @everywhere factor = 3
 
     @everywhere new_w_grid = exp.(range(log(0.001), log(300), length = factor * len))
 
@@ -248,9 +254,9 @@ c_policy_2, ϕ_policy_2, constrained_2 = solve_policy(V_2)
 
 # Plot policy functions
 
-plot(w_grid, c_policy_10, label = "γ = 10", lw = 2, legend = :topleft, xlabel = "Cash on Hand", ylabel = "Consumption")
-plot!(w_grid, c_policy_5, label = "γ = 5", lw = 2)
-plot!(w_grid, c_policy_2, label = "γ = 2", lw = 2)
+plot(new_w_grid, c_policy_10, label = "γ = 10", lw = 2, legend = :topleft, xlabel = "Cash on Hand", ylabel = "Consumption")
+plot!(new_w_grid, c_policy_5, label = "γ = 5", lw = 2)
+plot!(new_w_grid, c_policy_2, label = "γ = 2", lw = 2)
 ## Save 
 savefig("c_policy.png")
 
@@ -259,9 +265,9 @@ savefig("c_policy.png")
 indices_10 = findall(constrained_10 .== 0)
 indices_5 = findall(constrained_5 .== 0)
 indices_2 = findall(constrained_2 .== 0)
-plot(w_grid[indices_10], ϕ_policy_10[indices_10], label = "γ = 10", lw = 2, legend = :topleft, xlabel = "Cash on Hand", ylabel = "ϕ")
-plot!(w_grid[indices_5], ϕ_policy_5[indices_5], label = "γ = 5", lw = 2)
-plot!(w_grid[indices_2], ϕ_policy_2[indices_2], label = "γ = 2", lw = 2)
+plot(new_w_grid[indices_10], ϕ_policy_10[indices_10], label = "γ = 10", lw = 2, legend = :topleft, xlabel = "Cash on Hand", ylabel = "ϕ")
+plot!(new_w_grid[indices_5], ϕ_policy_5[indices_5], label = "γ = 5", lw = 2)
+plot!(new_w_grid[indices_2], ϕ_policy_2[indices_2], label = "γ = 2", lw = 2)
 savefig("phi_policy.png")
 
 
