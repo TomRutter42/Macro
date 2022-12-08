@@ -37,7 +37,7 @@ R_f = 1.01
 
 # Discretize the income process. 
 
-num_income_states = 2
+num_income_states = 3
 income_chain = tauchen(num_income_states, 0, σ_x, μ_x, 3)
 @everywhere income_states = exp.(income_chain.state_values)
 @everywhere income_probs = income_chain.p[1, :]
@@ -46,7 +46,7 @@ income_chain = tauchen(num_income_states, 0, σ_x, μ_x, 3)
 
 # Discretize the returns process. 
 
-num_return_states = 2
+num_return_states = 3
 return_chain = tauchen(num_return_states, 0, σ_r, μ_r, 3)
 @everywhere return_states = exp.(return_chain.state_values)
 @everywhere return_probs = return_chain.p[1, :]
@@ -83,12 +83,11 @@ end
 
 # Grids 
 
-N = 200 # grid sized for cash on hand
+N = 50 # grid sized for cash on hand
 
 # Wealth, consumption grid spaced so more values closer to boundary
 
-@everywhere w_grid = exp.(range(log(80), log(250), length = N)) 
-@everywhere w_grid = append!([1.0, 20.0, 40.0, 60.0], w_grid)
+@everywhere w_grid = exp.(range(log(0.001), log(300), length = N)) 
 @everywhere grid_ϕ = (range(0.0, 1.0, length = N)) .^ 0.5
 
 # ============================================================================= #
@@ -177,30 +176,36 @@ V_5 = VFI(tol_5)
 tol_2 = u(w_grid[end], γ) - u(w_grid[end - 1], γ)
 V_2 = VFI(tol_2)
 
-# Plot V 
-
-plot(w_grid, V, label = "Value Function", lw = 2, legend = :topleft, xlabel = "Cash on Hand")
-
 # Given V, solve for consumption and share of risky assets.
 
 function solve_policy(V)
 
     # Initialize policy functions
 
-    c_policy = zeros(length(w_grid))
-    ϕ_policy = zeros(length(w_grid))
-    constrained = zeros(length(w_grid))
+    @everywhere len = length(w_grid)
+
+    @everywhere factor = 10
+
+    @everywhere new_w_grid = exp.(range(log(0.001), log(300), length = factor * len))
+
+    @everywhere new_len = length(new_w_grid)
+
+    c_policy = zeros(new_len)
+    ϕ_policy = zeros(new_len)
+    constrained = zeros(new_len)
+
+    @everywhere grid_ϕ = (range(0.0, 1.0, length = new_len)) .^ 0.5
 
     # Form a spline approximation to V, that is flat outside the grid
     # i.e., doesn't keep growing as w gets really large. 
 
     @everywhere V_interp = extrapolate(interpolate(w_grid, V, LinearMonotonicInterpolation()), Interpolations.Flat())
 
-    Threads.@threads for (i, w) in collect(enumerate(w_grid))
+    Threads.@threads for (i, w) in collect(enumerate(new_w_grid))
                 
-        c_grid = range(w_grid[1], w, length = length(w_grid))
+        c_grid = range(w_grid[1], w, length = new_len)
         
-        V_candidates = zeros(length(c_grid), length(grid_ϕ))
+        V_candidates = zeros(new_len, new_len)
 
         for (j, c) in enumerate(c_grid)
 
@@ -208,7 +213,7 @@ function solve_policy(V)
 
                 w′ = wealth_states(ϕ, c, w, R_f, income_states, income_probs, return_states, return_probs)
 
-                V_candidates[j, k] = u(c, γ) + β * sum(prob_matrix .* V_old_interp.(w′))
+                V_candidates[j, k] = u(c, γ) + β * sum(prob_matrix .* V_interp.(w′))
 
             end
 
@@ -232,6 +237,7 @@ function solve_policy(V)
     return c_policy, ϕ_policy, constrained
 
 end
+
 
 @everywhere γ = 10
 c_policy_10, ϕ_policy_10, constrained_10 = solve_policy(V_10)
