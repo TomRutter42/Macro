@@ -22,16 +22,6 @@ cd(@__DIR__)
     return c^(1 - γ) / (1 - γ)
 end
 
-@everywhere function u′(c, γ)
-    return c^(-γ)
-end
-
-## Inverse of derivative of utility function
-
-@everywhere function u′_inv(MU, γ)
-    return (MU)^(-1 / γ)
-end
-
 # ============================================================================= #
 
 # γ = 10 # risk aversion --- need to change
@@ -92,13 +82,14 @@ end
 
 # Grids 
 
-N = 1000 #number of elements on the grid for cash on hand, total savings
+N = 100 #number of elements on the grid for cash on hand, total savings
 # N_ϕ = 100 #Number of elements on the grid for share risky
 
 # Wealth, consumption grid spaced so more values closer to boundary
 
-@everywhere w_grid = exp.(range(log(0.001), log(250), length = N)) 
-@everywhere grid_ϕ = (range(0, 1, length = N)) .^ 0.5
+@everywhere w_grid = exp.(range(log(80), log(250), length = N)) 
+@everywhere w_grid = append!([1.0, 20.0, 40.0, 60.0], w_grid)
+@everywhere grid_ϕ = (range(0.0, 1.0, length = N)) .^ 0.5
 
 # ============================================================================= #
 
@@ -133,60 +124,29 @@ function VFI(tolerance)
 
     @everywhere V = u.(w_grid, γ) 
 
-    V′_old = u′.(w_grid, γ)
-    V′_old[end] = 0
-
     while dist > tolerance
 
         @everywhere V_old = deepcopy(V)
-
-        ## Form a spline approximation to V, that is flat outside the grid
-        ## i.e., doesn't keep growing as w gets really large. 
-
-        @everywhere V_old_interp = extrapolate(interpolate(w_grid, V_old, LinearMonotonicInterpolation()), Interpolations.Flat())
-
-        ## Calculate a derivative to V_old using the slope to the right of each point. 
-        
-        @everywhere V′_old = (V_old[2:end] - V_old[1:end-1]) ./ (w_grid[2:end] - w_grid[1:end-1])
-        @everywhere V′_old = [V′_old; 0]
-
-        @everywhere V′_old_interp = extrapolate(interpolate(w_grid, V′_old, LinearMonotonicInterpolation()), Interpolations.Flat())
-
-        # Calculate the value of wealth at which borrowing constraint binds 
-        @everywhere w_bar = find_borrowing_constraint(V′_old_interp, u′_inv, γ, β, income_states, income_probs)
         
         Threads.@threads for (i, w) in collect(enumerate(w_grid))
-
-            if w < w_bar
                 
-                V[i] = u(w, γ) + β * sum(income_probs .* V_old_interp.(income_states))
-                continue
+            c_grid = range(w_grid[1], w, length = length(w_grid))
             
-            else 
-                
-                valid_indices = findall(w_grid .<= w) # indices of w_grid that are valid
+            V_candidates = zeros(length(c_grid), length(grid_ϕ))
 
-                c_grid = w_grid[valid_indices] # otherwise liquidity constraint is binding. 
+            for (j, c) in enumerate(c_grid)
 
-                ϕ_grid = grid_ϕ[valid_indices] # otherwise liquidity constraint is binding.
-                
-                V_candidates = zeros(length(c_grid), length(ϕ_grid))
+                for (k, ϕ) in enumerate(grid_ϕ)
 
-                for (j, c) in enumerate(c_grid)
+                    w′ = wealth_states(ϕ, c, w, R_f, income_states, income_probs, return_states, return_probs)
 
-                    for (k, ϕ) in enumerate(ϕ_grid)
-
-                        w′ = wealth_states(ϕ, c, w, R_f, income_states, income_probs, return_states, return_probs)
-
-                        V_candidates[j, k] = u(c, γ) + β * sum(prob_matrix .* V_old_interp.(w′))
-
-                    end
+                    V_candidates[j, k] = u(c, γ) + β * sum(prob_matrix .* V_old_interp.(w′))
 
                 end
 
-            V[i] = maximum(V_candidates)
-
             end
+
+        V[i] = maximum(V_candidates)
 
         end
 
@@ -202,8 +162,8 @@ function VFI(tolerance)
 
 end
 
-# VFI(γ = 10, tolerance = 10^(-30))
-@everywhere γ = 10
+
+@everywhere γ = 2.0
 V_10 = VFI(10^(-30))
 
 # Plot V 
@@ -212,52 +172,52 @@ plot(w_grid, V, label = "Value Function", lw = 2, legend = :topleft, xlabel = "C
 
 # Given V, solve for consumption and share of risky assets.
 
-function solve_policy(V)
+# function solve_policy(V)
 
-    # Initialize policy functions
+#     # Initialize policy functions
 
-    c_policy = zeros(length(w_grid))
-    ϕ_policy = zeros(length(w_grid))
+#     c_policy = zeros(length(w_grid))
+#     ϕ_policy = zeros(length(w_grid))
 
-    # Form a spline approximation to V, that is flat outside the grid
-    # i.e., doesn't keep growing as w gets really large. 
+#     # Form a spline approximation to V, that is flat outside the grid
+#     # i.e., doesn't keep growing as w gets really large. 
 
-    @everywhere V_interp = extrapolate(interpolate(w_grid, V, LinearMonotonicInterpolation()), Interpolations.Flat())
+#     @everywhere V_interp = extrapolate(interpolate(w_grid, V, LinearMonotonicInterpolation()), Interpolations.Flat())
 
-    Threads.@threads for (i, w) in collect(enumerate(w_grid))
+#     Threads.@threads for (i, w) in collect(enumerate(w_grid))
 
-        valid_indices = findall(w_grid .<= w) # indices of w_grid that are valid
+#         valid_indices = findall(w_grid .<= w) # indices of w_grid that are valid
 
-        c_grid = w_grid[valid_indices] # otherwise liquidity constraint is binding. 
+#         c_grid = w_grid[valid_indices] # otherwise liquidity constraint is binding. 
 
-        ϕ_grid = grid_ϕ[valid_indices] # otherwise liquidity constraint is binding.
+#         ϕ_grid = grid_ϕ[valid_indices] # otherwise liquidity constraint is binding.
         
-        V_candidates = zeros(length(c_grid), length(ϕ_grid))
+#         V_candidates = zeros(length(c_grid), length(ϕ_grid))
 
-        for (j, c) in enumerate(c_grid)
+#         for (j, c) in enumerate(c_grid)
 
-            for (k, ϕ) in enumerate(ϕ_grid)
+#             for (k, ϕ) in enumerate(ϕ_grid)
 
-                w′ = wealth_states(ϕ, c, w, R_f, income_states, income_probs, return_states, return_probs)
+#                 w′ = wealth_states(ϕ, c, w, R_f, income_states, income_probs, return_states, return_probs)
 
-                V_candidates[j, k] = u(c, γ) + β * sum(prob_matrix .* V_interp.(w′))
+#                 V_candidates[j, k] = u(c, γ) + β * sum(prob_matrix .* V_interp.(w′))
 
-            end
+#             end
 
-        end
+#         end
 
-        V_max = maximum(V_candidates)
+#         V_max = maximum(V_candidates)
 
-        indices = findall(V_candidates .== V_max)
+#         indices = findall(V_candidates .== V_max)
 
-        c_policy[i] = c_grid[indices[1][1]]
-        ϕ_policy[i] = ϕ_grid[indices[1][2]]
+#         c_policy[i] = c_grid[indices[1][1]]
+#         ϕ_policy[i] = ϕ_grid[indices[1][2]]
 
-    end
+#     end
 
-    return c_policy, ϕ_policy
+#     return c_policy, ϕ_policy
 
-end
+# end
 
 # c_policy, ϕ_policy = solve_policy(V_10)
 
