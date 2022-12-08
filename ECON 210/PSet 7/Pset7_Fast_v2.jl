@@ -6,9 +6,9 @@ cd(@__DIR__)
 # ----------------------------------------------------------------------------- #
 
 # Packages
-@everywhere using Distributed
+using Distributed
 @everywhere using Interpolations
-@everywhere using Optim
+# @everywhere using Optim
 @everywhere using Plots
 @everywhere using QuantEcon
 
@@ -82,8 +82,7 @@ end
 
 # Grids 
 
-N = 100 #number of elements on the grid for cash on hand, total savings
-# N_ϕ = 100 #Number of elements on the grid for share risky
+N = 200 # grid sized for cash on hand
 
 # Wealth, consumption grid spaced so more values closer to boundary
 
@@ -127,6 +126,10 @@ function VFI(tolerance)
     while dist > tolerance
 
         @everywhere V_old = deepcopy(V)
+
+        # Interpolate V_old
+
+        @everywhere V_old_interp = LinearInterpolation(w_grid, V_old, extrapolation_bc = Flat())
         
         Threads.@threads for (i, w) in collect(enumerate(w_grid))
                 
@@ -163,8 +166,15 @@ function VFI(tolerance)
 end
 
 
-@everywhere γ = 2.0
-V_10 = VFI(10^(-30))
+@everywhere γ = 10
+tol_10 = u(w_grid[end], γ) - u(w_grid[end - 1], γ)
+V_10 = VFI(tol_10)
+@everywhere γ = 5
+tol_5 = u(w_grid[end], γ) - u(w_grid[end - 1], γ)
+V_5 = VFI(tol_5)
+@everywhere γ = 2
+tol_2 = u(w_grid[end], γ) - u(w_grid[end - 1], γ)
+V_2 = VFI(tol_2)
 
 # Plot V 
 
@@ -172,61 +182,80 @@ plot(w_grid, V, label = "Value Function", lw = 2, legend = :topleft, xlabel = "C
 
 # Given V, solve for consumption and share of risky assets.
 
-# function solve_policy(V)
+function solve_policy(V)
 
-#     # Initialize policy functions
+    # Initialize policy functions
 
-#     c_policy = zeros(length(w_grid))
-#     ϕ_policy = zeros(length(w_grid))
+    c_policy = zeros(length(w_grid))
+    ϕ_policy = zeros(length(w_grid))
+    constrained = zeros(length(w_grid))
 
-#     # Form a spline approximation to V, that is flat outside the grid
-#     # i.e., doesn't keep growing as w gets really large. 
+    # Form a spline approximation to V, that is flat outside the grid
+    # i.e., doesn't keep growing as w gets really large. 
 
-#     @everywhere V_interp = extrapolate(interpolate(w_grid, V, LinearMonotonicInterpolation()), Interpolations.Flat())
+    @everywhere V_interp = extrapolate(interpolate(w_grid, V, LinearMonotonicInterpolation()), Interpolations.Flat())
 
-#     Threads.@threads for (i, w) in collect(enumerate(w_grid))
-
-#         valid_indices = findall(w_grid .<= w) # indices of w_grid that are valid
-
-#         c_grid = w_grid[valid_indices] # otherwise liquidity constraint is binding. 
-
-#         ϕ_grid = grid_ϕ[valid_indices] # otherwise liquidity constraint is binding.
+    Threads.@threads for (i, w) in collect(enumerate(w_grid))
+                
+        c_grid = range(w_grid[1], w, length = length(w_grid))
         
-#         V_candidates = zeros(length(c_grid), length(ϕ_grid))
+        V_candidates = zeros(length(c_grid), length(grid_ϕ))
 
-#         for (j, c) in enumerate(c_grid)
+        for (j, c) in enumerate(c_grid)
 
-#             for (k, ϕ) in enumerate(ϕ_grid)
+            for (k, ϕ) in enumerate(grid_ϕ)
 
-#                 w′ = wealth_states(ϕ, c, w, R_f, income_states, income_probs, return_states, return_probs)
+                w′ = wealth_states(ϕ, c, w, R_f, income_states, income_probs, return_states, return_probs)
 
-#                 V_candidates[j, k] = u(c, γ) + β * sum(prob_matrix .* V_interp.(w′))
+                V_candidates[j, k] = u(c, γ) + β * sum(prob_matrix .* V_old_interp.(w′))
 
-#             end
+            end
 
-#         end
+        end
 
-#         V_max = maximum(V_candidates)
+        V_max = maximum(V_candidates)
 
-#         indices = findall(V_candidates .== V_max)
+        indices = findall(V_candidates .== V_max)
 
-#         c_policy[i] = c_grid[indices[1][1]]
-#         ϕ_policy[i] = ϕ_grid[indices[1][2]]
+        c_policy[i] = c_grid[indices[1][1]]
+        ϕ_policy[i] = grid_ϕ[indices[1][2]]
 
-#     end
+        if c_policy[i] == w
+            constrained[i] = 1
+        else 
+            constrained[i] = 0
+        end
 
-#     return c_policy, ϕ_policy
+    end
 
-# end
+    return c_policy, ϕ_policy, constrained
 
-# c_policy, ϕ_policy = solve_policy(V_10)
+end
 
-# # Plot policy functions
+@everywhere γ = 10
+c_policy_10, ϕ_policy_10, constrained_10 = solve_policy(V_10)
+@everywhere γ = 5
+c_policy_5, ϕ_policy_5, constrained_5 = solve_policy(V_5)
+@everywhere γ = 2
+c_policy_2, ϕ_policy_2, constrained_2 = solve_policy(V_2)
 
-# plot(w_grid, c_policy, label = "Consumption", lw = 2, legend = :topleft, xlabel = "Cash on Hand")
+# Plot policy functions
 
-# plot(w_grid, ϕ_policy, label = "Share of Risky Assets", lw = 2, legend = :topleft, xlabel = "Cash on Hand")
+plot(w_grid, c_policy_10, label = "γ = 10", lw = 2, legend = :topleft, xlabel = "Cash on Hand", ylabel = "Consumption")
+plot!(w_grid, c_policy_5, label = "γ = 5", lw = 2)
+plot!(w_grid, c_policy_2, label = "γ = 2", lw = 2)
+## Save 
+savefig("c_policy.png")
 
+
+# Plot phi policy function only for constrained == 0
+indices_10 = findall(constrained_10 .== 0)
+indices_5 = findall(constrained_5 .== 0)
+indices_2 = findall(constrained_2 .== 0)
+plot(w_grid[indices_10], ϕ_policy_10[indices_10], label = "γ = 10", lw = 2, legend = :topleft, xlabel = "Cash on Hand", ylabel = "ϕ")
+plot!(w_grid[indices_5], ϕ_policy_5[indices_5], label = "γ = 5", lw = 2)
+plot!(w_grid[indices_2], ϕ_policy_2[indices_2], label = "γ = 2", lw = 2)
+savefig("phi_policy.png")
 
 
 
